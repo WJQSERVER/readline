@@ -34,6 +34,8 @@ const (
 	KeyCtrlU
 	KeyCtrlW
 	KeyEsc
+	KeyCtrlLeft
+	KeyCtrlRight
 )
 
 type InputEvent struct {
@@ -130,7 +132,21 @@ func (p *Parser) parseEscape() (InputEvent, error) {
 			if r == '~' {
 				return InputEvent{Key: KeyDelete}, nil
 			}
-		case '1', '7': // Home [1~ or [7~
+		case '1': // [1;5C (Ctrl+Right) or [1;5D (Ctrl+Left)
+			// Also [1~ is Home
+			r, _, _ = p.reader.ReadRune()
+			if r == ';' {
+				r, _, _ = p.reader.ReadRune() // '5'
+				r, _, _ = p.reader.ReadRune() // 'C' or 'D'
+				if r == 'C' {
+					return InputEvent{Key: KeyCtrlRight}, nil
+				} else if r == 'D' {
+					return InputEvent{Key: KeyCtrlLeft}, nil
+				}
+			} else if r == '~' {
+				return InputEvent{Key: KeyHome}, nil
+			}
+		case '7': // Home [7~
 			r, _, _ = p.reader.ReadRune()
 			if r == '~' {
 				return InputEvent{Key: KeyHome}, nil
@@ -152,6 +168,10 @@ func (p *Parser) parseEscape() (InputEvent, error) {
 		case 'F':
 			return InputEvent{Key: KeyEnd}, nil
 		}
+	} else if r == 'b' { // Alt+b is often used as MoveWordLeft
+		return InputEvent{Key: KeyCtrlLeft}, nil
+	} else if r == 'f' { // Alt+f is often used as MoveWordRight
+		return InputEvent{Key: KeyCtrlRight}, nil
 	}
 
 	return InputEvent{Key: KeyUnknown}, nil

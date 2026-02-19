@@ -2,6 +2,7 @@ package buffer
 
 import (
 	"github.com/mattn/go-runewidth"
+	"unicode"
 )
 
 type Buffer struct {
@@ -45,6 +46,40 @@ func (b *Buffer) MoveRight() {
 	if b.cursor < len(b.data) {
 		b.cursor++
 	}
+}
+
+func (b *Buffer) MoveWordLeft() {
+	if b.cursor == 0 {
+		return
+	}
+
+	i := b.cursor
+	// Skip spaces to the left
+	for i > 0 && unicode.IsSpace(b.data[i-1]) {
+		i--
+	}
+	// Skip non-spaces to the left
+	for i > 0 && !unicode.IsSpace(b.data[i-1]) {
+		i--
+	}
+	b.cursor = i
+}
+
+func (b *Buffer) MoveWordRight() {
+	if b.cursor == len(b.data) {
+		return
+	}
+
+	i := b.cursor
+	// Skip spaces to the right
+	for i < len(b.data) && unicode.IsSpace(b.data[i]) {
+		i++
+	}
+	// Skip non-spaces to the right
+	for i < len(b.data) && !unicode.IsSpace(b.data[i]) {
+		i++
+	}
+	b.cursor = i
 }
 
 func (b *Buffer) MoveHome() {

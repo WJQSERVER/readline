@@ -39,3 +39,24 @@ func TestUnicode(t *testing.T) {
 		t.Errorf("expected width 4, got %d", b.FullWidth())
 	}
 }
+
+func TestWordMovement(t *testing.T) {
+	b := NewBuffer()
+	b.SetContent("hello world  test")
+	// Cursor is at end (17)
+
+	b.MoveWordLeft() // Should skip trailing space and move to start of "test" (13)
+	if b.Cursor() != 13 {
+		t.Errorf("expected cursor 13, got %d", b.Cursor())
+	}
+
+	b.MoveWordLeft() // Should move to start of "world" (6)
+	if b.Cursor() != 6 {
+		t.Errorf("expected cursor 6, got %d", b.Cursor())
+	}
+
+	b.MoveWordRight() // Should move to end of "world" (11)
+	if b.Cursor() != 11 {
+		t.Errorf("expected cursor 11, got %d", b.Cursor())
+	}
+}
