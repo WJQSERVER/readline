@@ -63,4 +63,4 @@ func main() {
 
 ## 许可证
 
-MIT License
+Mozilla Public License 2.0
