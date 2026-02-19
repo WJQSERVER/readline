@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"purego-readline"
+	"github.com/WJQSERVER/readline"
 )
 
 func main() {

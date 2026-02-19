@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/mattn/go-runewidth"
-	"purego-readline/internal/buffer"
+	"github.com/WJQSERVER/readline/internal/buffer"
 )
 
 type Renderer struct {
