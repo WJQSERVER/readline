@@ -1,4 +1,4 @@
-module purego-readline
+module github.com/WJQSERVER/readline
 
 go 1.26.0
 

@@ -1,13 +1,13 @@
 # PureGo Readline 使用指南
 
-`purego-readline` 是一个纯 Go 编写的跨平台行读取库，支持 Linux, macOS 和 Windows。
+`github.com/WJQSERVER/readline` 是一个纯 Go 编写的跨平台行读取库，支持 Linux, macOS 和 Windows。
 
 ## 安装
 
 由于这是一个本地项目，你可以直接在你的 Go 项目中通过 go mod 引用它。
 
 ```bash
-go get github.com/your-username/purego-readline
+go get github.com/WJQSERVER/readline
 ```
 
 ## 快速开始
@@ -20,7 +20,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"purego-readline"
+	"github.com/WJQSERVER/readline"
 )
 
 func main() {

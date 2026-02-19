@@ -3,10 +3,10 @@ package readline
 import (
 	"errors"
 	"io"
-	"purego-readline/internal/buffer"
-	"purego-readline/internal/input"
-	"purego-readline/internal/render"
-	"purego-readline/internal/term"
+	"github.com/WJQSERVER/readline/internal/buffer"
+	"github.com/WJQSERVER/readline/internal/input"
+	"github.com/WJQSERVER/readline/internal/render"
+	"github.com/WJQSERVER/readline/internal/term"
 )
 
 var (
