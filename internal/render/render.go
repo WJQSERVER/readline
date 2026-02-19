@@ -27,15 +27,21 @@ func (r *Renderer) SetPrompt(prompt string) {
 func (r *Renderer) Refresh(b *buffer.Buffer) error {
 	currentWidth := b.FullWidth()
 	cursorPos := b.DisplayWidth(b.Cursor())
-	promptWidth := runewidth.StringWidth(r.prompt)
+
+	// Strip ANSI sequences to calculate true visual width of the prompt
+	visualPrompt := stripANSI(r.prompt)
+	promptWidth := runewidth.StringWidth(visualPrompt)
 
 	// Basic redraw: carriage return, print prompt + content, clear to EOL
 	fmt.Fprintf(r.out, "\r%s%s\x1b[K", r.prompt, b.String())
 
 	// Move cursor to correct position
-	// Use absolute horizontal position if supported, or move from start
-	// \x1b[G is move to column (1-based)
-	fmt.Fprintf(r.out, "\r\x1b[%dC", promptWidth+cursorPos)
+	targetPos := promptWidth + cursorPos
+	if targetPos > 0 {
+		fmt.Fprintf(r.out, "\r\x1b[%dC", targetPos)
+	} else {
+		fmt.Fprintf(r.out, "\r")
+	}
 
 	r.lastWidth = currentWidth
 	return nil

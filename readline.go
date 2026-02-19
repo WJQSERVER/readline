@@ -78,6 +78,10 @@ func (i *Instance) Readline() (string, error) {
 			i.buffer.MoveLeft()
 		case input.KeyRight:
 			i.buffer.MoveRight()
+		case input.KeyCtrlLeft:
+			i.buffer.MoveWordLeft()
+		case input.KeyCtrlRight:
+			i.buffer.MoveWordRight()
 		case input.KeyHome:
 			i.buffer.MoveHome()
 		case input.KeyEnd:
@@ -95,7 +99,7 @@ func (i *Instance) Readline() (string, error) {
 			}
 			i.buffer.Delete()
 		case input.KeyCtrlL:
-			i.renderer.ClearLine()
+			i.renderer.Refresh(i.buffer) // Just refresh, clear logic is in renderer
 		case input.KeyRune:
 			i.buffer.Insert(ev.Rune)
 		case input.KeyTab:
