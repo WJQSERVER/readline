@@ -90,6 +90,15 @@ func (b *Buffer) MoveEnd() {
 	b.cursor = len(b.data)
 }
 
+func (b *Buffer) KillToEnd() {
+	b.data = b.data[:b.cursor]
+}
+
+func (b *Buffer) KillToStart() {
+	b.data = b.data[b.cursor:]
+	b.cursor = 0
+}
+
 func (b *Buffer) String() string {
 	return string(b.data)
 }
@@ -122,4 +131,41 @@ func (b *Buffer) DisplayWidth(limit int) int {
 
 func (b *Buffer) FullWidth() int {
 	return runewidth.StringWidth(string(b.data))
+}
+
+func (b *Buffer) DeleteWord() {
+	if b.cursor == len(b.data) {
+		return
+	}
+
+	i := b.cursor
+	// Skip spaces to the right
+	for i < len(b.data) && unicode.IsSpace(b.data[i]) {
+		i++
+	}
+	// Skip non-spaces to the right
+	for i < len(b.data) && !unicode.IsSpace(b.data[i]) {
+		i++
+	}
+
+	b.data = append(b.data[:b.cursor], b.data[i:]...)
+}
+
+func (b *Buffer) BackspaceWord() {
+	if b.cursor == 0 {
+		return
+	}
+
+	i := b.cursor
+	// Skip spaces to the left
+	for i > 0 && unicode.IsSpace(b.data[i-1]) {
+		i--
+	}
+	// Skip non-spaces to the left
+	for i > 0 && !unicode.IsSpace(b.data[i-1]) {
+		i--
+	}
+
+	b.data = append(b.data[:i], b.data[b.cursor:]...)
+	b.cursor = i
 }

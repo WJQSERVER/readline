@@ -2,8 +2,13 @@ package input
 
 import (
 	"bufio"
+	"errors"
 	"io"
+	"sync"
+	"time"
 )
+
+var errParserClosed = errors.New("parser closed")
 
 type Key int
 
@@ -36,6 +41,8 @@ const (
 	KeyEsc
 	KeyCtrlLeft
 	KeyCtrlRight
+	KeyCtrlDelete
+	KeyCtrlBackspace
 )
 
 type InputEvent struct {
@@ -44,21 +51,70 @@ type InputEvent struct {
 }
 
 type Parser struct {
-	reader *bufio.Reader
+	reader    *bufio.Reader
+	results   chan readResult
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+type readResult struct {
+	rune rune
+	err  error
 }
 
 func NewParser(r io.Reader) *Parser {
-	return &Parser{
-		reader: bufio.NewReader(r),
+	p := &Parser{
+		reader:  bufio.NewReader(r),
+		results: make(chan readResult, 100),
+		closed:  make(chan struct{}),
+	}
+	go p.fill()
+	return p
+}
+
+func (p *Parser) fill() {
+	defer close(p.results)
+	for {
+		select {
+		case <-p.closed:
+			p.results <- readResult{err: errParserClosed}
+			return
+		default:
+		}
+		r, _, err := p.reader.ReadRune()
+		if err != nil {
+			p.results <- readResult{err: err}
+			return
+		}
+		p.results <- readResult{rune: r}
 	}
 }
 
 func (p *Parser) NextEvent() (InputEvent, error) {
-	r, _, err := p.reader.ReadRune()
-	if err != nil {
-		return InputEvent{}, err
+	result, ok := <-p.results
+	if !ok {
+		return InputEvent{}, io.EOF
 	}
+	if result.err != nil {
+		if result.err == errParserClosed {
+			return InputEvent{}, io.EOF
+		}
+		if result.err != io.EOF {
+			return InputEvent{}, result.err
+		}
+		return InputEvent{}, io.EOF
+	}
+	return p.parseRune(result.rune)
+}
 
+func (p *Parser) Close() error {
+	p.closeOnce.Do(func() {
+		close(p.closed)
+	})
+	return nil
+}
+
+func (p *Parser) parseRune(r rune) (InputEvent, error) {
 	switch r {
 	case '\r', '\n':
 		return InputEvent{Key: KeyEnter}, nil
@@ -93,25 +149,56 @@ func (p *Parser) NextEvent() (InputEvent, error) {
 	case 23:
 		return InputEvent{Key: KeyCtrlW}, nil
 	case 27: // Escape
-		// Check for escape sequences
-		if p.reader.Buffered() == 0 {
-			return InputEvent{Key: KeyEsc}, nil
-		}
 		return p.parseEscape()
+	case 0, 224: // Windows extended key prefix (if not in VT mode)
+		next, ok := p.readNext(50 * time.Millisecond)
+		if ok {
+			switch next {
+			case 'H':
+				return InputEvent{Key: KeyUp}, nil
+			case 'P':
+				return InputEvent{Key: KeyDown}, nil
+			case 'M':
+				return InputEvent{Key: KeyRight}, nil
+			case 'K':
+				return InputEvent{Key: KeyLeft}, nil
+			case 'G':
+				return InputEvent{Key: KeyHome}, nil
+			case 'O':
+				return InputEvent{Key: KeyEnd}, nil
+			case 'S':
+				return InputEvent{Key: KeyDelete}, nil
+			case 0x93:
+				return InputEvent{Key: KeyCtrlDelete}, nil
+			}
+		}
+		return InputEvent{Key: KeyRune, Rune: r}, nil
 	default:
 		return InputEvent{Key: KeyRune, Rune: r}, nil
 	}
 }
 
+func (p *Parser) readNext(timeout time.Duration) (rune, bool) {
+	select {
+	case result, ok := <-p.results:
+		if !ok || result.err != nil {
+			return 0, false
+		}
+		return result.rune, true
+	case <-time.After(timeout):
+		return 0, false
+	}
+}
+
 func (p *Parser) parseEscape() (InputEvent, error) {
-	r, _, err := p.reader.ReadRune()
-	if err != nil {
+	r, ok := p.readNext(100 * time.Millisecond)
+	if !ok {
 		return InputEvent{Key: KeyEsc}, nil
 	}
 
 	if r == '[' {
-		r, _, err = p.reader.ReadRune()
-		if err != nil {
+		r, ok = p.readNext(100 * time.Millisecond)
+		if !ok {
 			return InputEvent{Key: KeyEsc}, nil
 		}
 		switch r {
@@ -127,51 +214,77 @@ func (p *Parser) parseEscape() (InputEvent, error) {
 			return InputEvent{Key: KeyHome}, nil
 		case 'F':
 			return InputEvent{Key: KeyEnd}, nil
-		case '3': // Maybe Delete [3~
-			r, _, _ = p.reader.ReadRune()
-			if r == '~' {
+		case '3': // Maybe Delete [3~ or Ctrl+Delete [3;5~
+			r, ok = p.readNext(100 * time.Millisecond)
+			if ok && r == '~' {
 				return InputEvent{Key: KeyDelete}, nil
+			} else if ok && r == ';' {
+				r, ok = p.readNext(100 * time.Millisecond) // '5'
+				if ok && r == '5' {
+					r, ok = p.readNext(100 * time.Millisecond) // '~'
+					if ok && r == '~' {
+						return InputEvent{Key: KeyCtrlDelete}, nil
+					}
+				}
+			} else if ok && r == '^' {
+				return InputEvent{Key: KeyCtrlDelete}, nil
 			}
-		case '1': // [1;5C (Ctrl+Right) or [1;5D (Ctrl+Left)
-			// Also [1~ is Home
-			r, _, _ = p.reader.ReadRune()
-			if r == ';' {
-				r, _, _ = p.reader.ReadRune() // '5'
-				r, _, _ = p.reader.ReadRune() // 'C' or 'D'
-				if r == 'C' {
+		case '1': // [1;5A (Ctrl+Up), [1;5B (Ctrl+Down), [1;5C (Ctrl+Right), [1;5D (Ctrl+Left)
+			r, ok = p.readNext(100 * time.Millisecond)
+			if ok && r == ';' {
+				r, ok = p.readNext(100 * time.Millisecond) // '5'
+				r, ok = p.readNext(100 * time.Millisecond) // 'A','B','C' or 'D'
+				switch r {
+				case 'A':
+					return InputEvent{Key: KeyUp}, nil
+				case 'B':
+					return InputEvent{Key: KeyDown}, nil
+				case 'C':
 					return InputEvent{Key: KeyCtrlRight}, nil
-				} else if r == 'D' {
+				case 'D':
 					return InputEvent{Key: KeyCtrlLeft}, nil
 				}
-			} else if r == '~' {
+			} else if ok && r == '~' {
 				return InputEvent{Key: KeyHome}, nil
 			}
 		case '7': // Home [7~
-			r, _, _ = p.reader.ReadRune()
-			if r == '~' {
+			r, ok = p.readNext(100 * time.Millisecond)
+			if ok && r == '~' {
 				return InputEvent{Key: KeyHome}, nil
 			}
 		case '4', '8': // End [4~ or [8~
-			r, _, _ = p.reader.ReadRune()
-			if r == '~' {
+			r, ok = p.readNext(100 * time.Millisecond)
+			if ok && r == '~' {
 				return InputEvent{Key: KeyEnd}, nil
 			}
 		}
 	} else if r == 'O' {
-		r, _, err = p.reader.ReadRune()
-		if err != nil {
+		r, ok = p.readNext(100 * time.Millisecond)
+		if !ok {
 			return InputEvent{Key: KeyEsc}, nil
 		}
 		switch r {
+		case 'A':
+			return InputEvent{Key: KeyUp}, nil
+		case 'B':
+			return InputEvent{Key: KeyDown}, nil
+		case 'C':
+			return InputEvent{Key: KeyRight}, nil
+		case 'D':
+			return InputEvent{Key: KeyLeft}, nil
 		case 'H':
 			return InputEvent{Key: KeyHome}, nil
 		case 'F':
 			return InputEvent{Key: KeyEnd}, nil
 		}
-	} else if r == 'b' { // Alt+b is often used as MoveWordLeft
+	} else if r == 'b' {
 		return InputEvent{Key: KeyCtrlLeft}, nil
-	} else if r == 'f' { // Alt+f is often used as MoveWordRight
+	} else if r == 'f' {
 		return InputEvent{Key: KeyCtrlRight}, nil
+	} else if r == 'd' {
+		return InputEvent{Key: KeyCtrlDelete}, nil
+	} else if r == 127 || r == '\b' {
+		return InputEvent{Key: KeyCtrlBackspace}, nil
 	}
 
 	return InputEvent{Key: KeyUnknown}, nil
